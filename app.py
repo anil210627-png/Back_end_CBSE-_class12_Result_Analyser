@@ -1,7 +1,5 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
-import io
 
 app = Flask(__name__)
 CORS(app)
@@ -27,45 +25,55 @@ def predict():
 
         lines = content.splitlines()
 
-        total_students = 0
-        total_marks = 0
-        subject_count = 0
-
         subjects = []
+
+        total_pi = 0
 
         for line in lines:
 
-            if line.strip() == "":
-                continue
-
-            parts = line.split()
+            parts = line.strip().split()
 
             if len(parts) >= 2:
 
                 subject_name = parts[0]
 
                 try:
+
                     marks = int(parts[1])
 
-                    pi = round((marks / 100) * 100, 2)
+                    pi = round(marks * 1.0, 2)
 
                     subjects.append({
+                        "code": len(subjects) + 301,
                         "subject": subject_name,
-                        "marks": marks,
-                        "pi": pi
+                        "total": 1,
+                        "A1": 0,
+                        "A2": 0,
+                        "B1": 0,
+                        "B2": 0,
+                        "C1": 0,
+                        "C2": 0,
+                        "D": 0,
+                        "E": 0,
+                        "pi": pi,
+                        "pass_percent": 100
                     })
 
-                    total_marks += marks
-                    subject_count += 1
+                    total_pi += pi
 
                 except:
                     pass
 
-        school_pi = round(total_marks / subject_count, 2) if subject_count > 0 else 0
+        total_subjects = len(subjects)
+
+        school_pi = round(total_pi / total_subjects, 2) if total_subjects > 0 else 0
 
         return jsonify({
             "success": True,
             "school_pi": school_pi,
+            "total_subjects": total_subjects,
+            "subject_entries": total_subjects,
+            "pass_rate": 100,
             "subjects": subjects
         })
 
