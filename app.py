@@ -5,177 +5,116 @@ import re
 app = Flask(__name__)
 CORS(app)
 
-GRADE_POINTS = {
-    "A1": 10,
-    "A2": 9,
-    "B1": 8,
-    "B2": 7,
-    "C1": 6,
-    "C2": 5,
-    "D1": 4,
-    "D2": 4,
-    "E": 0
-}
-
-SUBJECT_NAMES = {
-    "301": "English Core",
-    "302": "Hindi Core",
-    "041": "Mathematics",
-    "042": "Physics",
-    "043": "Chemistry",
-    "044": "Biology",
-    "048": "Physical Education",
-    "083": "Computer Science"
-}
-
 @app.route("/")
 def home():
-    return "CBSE Result PI Calculator Backend Running ✅"
+    return "CBSE Result Analyzer Backend Running Successfully ✅"
 
 @app.route("/predict", methods=["POST"])
 def predict():
 
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"})
+    try:
 
-    file = request.files["file"]
+        if "file" not in request.files:
+            return jsonify({
+                "success": False,
+                "message": "No file uploaded"
+            })
 
-    content = file.read().decode("utf-8", errors="ignore")
+        file = request.files["file"]
 
-    lines = content.splitlines()
+        # Read txt file safely
+        content = file.read().decode("utf-8", errors="ignore")
 
-    subject_data = {}
+        lines = content.splitlines()
 
-    i = 0
+        students = []
 
-    while i < len(lines) - 1:
+        current_student = None
 
-        line1 = lines[i].strip()
-        line2 = lines[i + 1].strip()
+        for line in lines:
 
-        # Detect student row
-        if re.match(r"^\d{8}", line1):
+            line = line.strip()
 
-            try:
+            # Detect student roll number line
+            match = re.match(r"(\d{8})\s+[A-Z]\s+([A-Z\s]+)", line)
 
-                # Subject codes
-                codes = re.findall(r"\b\d{3}\b", line1)
+            if match:
 
-                # Grades
-                grades = re.findall(
-                    r"\b(A1|A2|B1|B2|C1|C2|D1|D2|E)\b",
-                    line2
-                )
+                if current_student:
+                    students.append(current_student)
 
-                # Pair subject and grade
-                for code, grade in zip(codes, grades):
+                roll = match.group(1)
+                name = match.group(2).strip()
 
-                    if code not in subject_data:
-                        subject_data[code] = {
-                            "code": code,
-                            "subject": SUBJECT_NAMES.get(code, code),
-                            "total": 0,
-                            "A1": 0,
-                            "A2": 0,
-                            "B1": 0,
-                            "B2": 0,
-                            "C1": 0,
-                            "C2": 0,
-                            "D": 0,
-                            "E": 0
-                        }
+                current_student = {
+                    "roll": roll,
+                    "name": name,
+                    "marks": []
+                }
 
-                    subject_data[code]["total"] += 1
+            else:
 
-                    if grade == "A1":
-                        subject_data[code]["A1"] += 1
+                # Extract marks from next line
+                marks = re.findall(r"(\d{3})\s+[A-Z]\d", line)
 
-                    elif grade == "A2":
-                        subject_data[code]["A2"] += 1
+                if current_student and marks:
 
-                    elif grade == "B1":
-                        subject_data[code]["B1"] += 1
+                    numeric_marks = re.findall(r"(\d{2,3})", line)
 
-                    elif grade == "B2":
-                        subject_data[code]["B2"] += 1
+                    valid_marks = []
 
-                    elif grade == "C1":
-                        subject_data[code]["C1"] += 1
+                    for m in numeric_marks:
+                        value = int(m)
 
-                    elif grade == "C2":
-                        subject_data[code]["C2"] += 1
+                        if value <= 100:
+                            valid_marks.append(value)
 
-                    elif grade in ["D1", "D2"]:
-                        subject_data[code]["D"] += 1
+                    current_student["marks"] = valid_marks[:6]
 
-                    elif grade == "E":
-                        subject_data[code]["E"] += 1
+        if current_student:
+            students.append(current_student)
 
-            except:
-                pass
+        # Calculate PI
+        result_students = []
 
-            i += 2
+        school_total = 0
+        school_count = 0
 
-        else:
-            i += 1
+        for s in students:
 
-    subjects = []
+            if len(s["marks"]) == 0:
+                continue
 
-    total_school_pi = 0
+            avg = round(sum(s["marks"]) / len(s["marks"]), 2)
 
-    for code, data in subject_data.items():
+            school_total += avg
+            school_count += 1
 
-        total = data["total"]
+            result_students.append({
+                "roll": s["roll"],
+                "name": s["name"],
+                "pi": avg
+            })
 
-        total_points = (
-            data["A1"] * 10 +
-            data["A2"] * 9 +
-            data["B1"] * 8 +
-            data["B2"] * 7 +
-            data["C1"] * 6 +
-            data["C2"] * 5 +
-            data["D"] * 4
-        )
+        school_pi = 0
 
-        max_points = total * 10
+        if school_count > 0:
+            school_pi = round(school_total / school_count, 2)
 
-        pi = round((total_points / max_points) * 100, 2)
-
-        pass_percent = round(
-            ((total - data["E"]) / total) * 100,
-            2
-        )
-
-        total_school_pi += pi
-
-        subjects.append({
-            "code": code,
-            "subject": data["subject"],
-            "total": total,
-            "A1": data["A1"],
-            "A2": data["A2"],
-            "B1": data["B1"],
-            "B2": data["B2"],
-            "C1": data["C1"],
-            "C2": data["C2"],
-            "D": data["D"],
-            "E": data["E"],
-            "pi": pi,
-            "pass_percent": pass_percent
+        return jsonify({
+            "success": True,
+            "school_pi": school_pi,
+            "total_students": school_count,
+            "students": result_students
         })
 
-    school_pi = round(
-        total_school_pi / len(subjects),
-        2
-    ) if subjects else 0
+    except Exception as e:
 
-    return jsonify({
-        "school_pi": school_pi,
-        "total_subjects": len(subjects),
-        "subject_entries": len(subjects),
-        "pass_rate": "100%",
-        "subjects": subjects
-    })
+        return jsonify({
+            "success": False,
+            "message": "Error processing file",
+            "error": str(e)
+        })
 
 if __name__ == "__main__":
     app.run(debug=True)
