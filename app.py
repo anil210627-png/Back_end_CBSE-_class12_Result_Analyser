@@ -5,9 +5,11 @@ import re
 app = Flask(__name__)
 CORS(app)
 
+
 @app.route("/")
 def home():
-    return "CBSE Result Analyzer Backend Running Successfully ✅"
+    return "KVS CBSE Class 12 Result Analyser Backend Running"
+
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -17,104 +19,99 @@ def predict():
         if "file" not in request.files:
             return jsonify({
                 "success": False,
-                "message": "No file uploaded"
+                "error": "No file uploaded"
             })
 
         file = request.files["file"]
 
-        # Read txt file safely
-        content = file.read().decode("utf-8", errors="ignore")
+        text = file.read().decode("utf-8", errors="ignore")
 
-        lines = content.splitlines()
+        lines = text.splitlines()
 
-        students = []
+        subject_totals = {}
+        subject_counts = {}
 
-        current_student = None
+        school_total = 0
+        school_count = 0
+
+        current_subjects = []
 
         for line in lines:
 
             line = line.strip()
 
-            # Detect student roll number line
-            match = re.match(r"(\d{8})\s+[A-Z]\s+([A-Z\s]+)", line)
+            # SUBJECT CODE LINE
+            # Example:
+            # 301 302 042 043 044 048
 
-            if match:
+            if re.search(r"\d{3}", line):
 
-                if current_student:
-                    students.append(current_student)
+                subject_codes = re.findall(r"\b\d{3}\b", line)
 
-                roll = match.group(1)
-                name = match.group(2).strip()
+                if len(subject_codes) >= 5:
+                    current_subjects = subject_codes
 
-                current_student = {
-                    "roll": roll,
-                    "name": name,
-                    "marks": []
-                }
+            # MARKS LINE
+            # Example:
+            # 095 A1 086 A1 071 B1 063 C1 ...
 
-            else:
+            marks = re.findall(r"\b(\d{2,3})\s+[A-F][1-9]?\b", line)
 
-                # Extract marks from next line
-                marks = re.findall(r"(\d{3})\s+[A-Z]\d", line)
+            if len(marks) >= 5 and len(current_subjects) >= len(marks):
 
-                if current_student and marks:
+                for i in range(len(marks)):
 
-                    numeric_marks = re.findall(r"(\d{2,3})", line)
+                    try:
 
-                    valid_marks = []
+                        mark = int(marks[i])
 
-                    for m in numeric_marks:
-                        value = int(m)
+                        if mark > 100:
+                            continue
 
-                        if value <= 100:
-                            valid_marks.append(value)
+                        sub = current_subjects[i]
 
-                    current_student["marks"] = valid_marks[:6]
+                        if sub not in subject_totals:
+                            subject_totals[sub] = 0
+                            subject_counts[sub] = 0
 
-        if current_student:
-            students.append(current_student)
+                        subject_totals[sub] += mark
+                        subject_counts[sub] += 1
 
-        # Calculate PI
-        result_students = []
+                        school_total += mark
+                        school_count += 1
 
-        school_total = 0
-        school_count = 0
+                    except:
+                        pass
 
-        for s in students:
+        subject_wise_pi = []
 
-            if len(s["marks"]) == 0:
-                continue
+        for sub in subject_totals:
 
-            avg = round(sum(s["marks"]) / len(s["marks"]), 2)
+            avg = round(subject_totals[sub] / subject_counts[sub], 2)
 
-            school_total += avg
-            school_count += 1
-
-            result_students.append({
-                "roll": s["roll"],
-                "name": s["name"],
+            subject_wise_pi.append({
+                "subject": sub,
                 "pi": avg
             })
 
-        school_pi = 0
-
         if school_count > 0:
             school_pi = round(school_total / school_count, 2)
+        else:
+            school_pi = 0
 
         return jsonify({
             "success": True,
             "school_pi": school_pi,
-            "total_students": school_count,
-            "students": result_students
+            "subject_wise_pi": subject_wise_pi
         })
 
     except Exception as e:
 
         return jsonify({
             "success": False,
-            "message": "Error processing file",
             "error": str(e)
         })
+
 
 if __name__ == "__main__":
     app.run(debug=True)
