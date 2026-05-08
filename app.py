@@ -8,7 +8,7 @@ CORS(app)
 
 @app.route("/")
 def home():
-    return "KVS CBSE Class 12 Result Analyser Backend Running"
+    return "CBSE Result Analyser Backend Running"
 
 
 @app.route("/predict", methods=["POST"])
@@ -44,60 +44,74 @@ def predict():
             # Example:
             # 301 302 042 043 044 048
 
-            if re.search(r"\d{3}", line):
+            subject_match = re.findall(r"\b\d{3}\b", line)
 
-                subject_codes = re.findall(r"\b\d{3}\b", line)
+            if len(subject_match) >= 5 and "A1" not in line:
 
-                if len(subject_codes) >= 5:
-                    current_subjects = subject_codes
+                current_subjects = subject_match
+                continue
 
             # MARKS LINE
             # Example:
-            # 095 A1 086 A1 071 B1 063 C1 ...
+            # 095 A1 086 A1 071 B1 ...
 
-            marks = re.findall(r"\b(\d{2,3})\s+[A-F][1-9]?\b", line)
+            marks_match = re.findall(r"(\d{2,3})\s+[A-E][1-9]?", line)
 
-            if len(marks) >= 5 and len(current_subjects) >= len(marks):
+            if len(marks_match) >= 5 and len(current_subjects) >= len(marks_match):
 
-                for i in range(len(marks)):
+                for i in range(len(marks_match)):
 
                     try:
 
-                        mark = int(marks[i])
+                        subject = current_subjects[i]
+                        marks = int(marks_match[i])
 
-                        if mark > 100:
+                        if marks > 100:
                             continue
 
-                        sub = current_subjects[i]
+                        if subject not in subject_totals:
+                            subject_totals[subject] = 0
+                            subject_counts[subject] = 0
 
-                        if sub not in subject_totals:
-                            subject_totals[sub] = 0
-                            subject_counts[sub] = 0
+                        subject_totals[subject] += marks
+                        subject_counts[subject] += 1
 
-                        subject_totals[sub] += mark
-                        subject_counts[sub] += 1
-
-                        school_total += mark
+                        school_total += marks
                         school_count += 1
 
                     except:
                         pass
 
+        # SUBJECT NAMES
+        subject_names = {
+            "301": "English Core",
+            "302": "Hindi Core",
+            "041": "Mathematics",
+            "042": "Physics",
+            "043": "Chemistry",
+            "044": "Biology",
+            "048": "Physical Education",
+            "083": "Computer Science"
+        }
+
         subject_wise_pi = []
 
-        for sub in subject_totals:
+        for sub_code in subject_totals:
 
-            avg = round(subject_totals[sub] / subject_counts[sub], 2)
+            avg = round(
+                subject_totals[sub_code] / subject_counts[sub_code],
+                2
+            )
 
             subject_wise_pi.append({
-                "subject": sub,
+                "subject": subject_names.get(sub_code, sub_code),
                 "pi": avg
             })
 
+        school_pi = 0
+
         if school_count > 0:
             school_pi = round(school_total / school_count, 2)
-        else:
-            school_pi = 0
 
         return jsonify({
             "success": True,
