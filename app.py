@@ -5,7 +5,6 @@ import re
 app = Flask(__name__)
 CORS(app)
 
-# SUBJECT NAMES
 SUBJECT_MAP = {
     "301": "English Core",
     "302": "Hindi Core",
@@ -40,7 +39,7 @@ GRADE_POINTS = {
 
 @app.route("/")
 def home():
-    return "CBSE Result Analyzer Backend Running Successfully"
+    return "Backend Running Successfully"
 
 
 @app.route("/predict", methods=["POST"])
@@ -50,11 +49,8 @@ def predict():
 
         if "file" not in request.files:
             return jsonify({
-                "subjects": {},
-                "overallPI": 0,
-                "overallPassRate": 0,
-                "totalStudents": 0,
-                "error": "No file uploaded"
+                "error": "No file uploaded",
+                "subjects": {}
             })
 
         file = request.files["file"]
@@ -74,112 +70,114 @@ def predict():
 
             line = lines[i].strip()
 
-            # Detect student line
-            roll_match = re.match(r"^\d{8}", line)
-
-            if roll_match:
+            # Detect student roll number line
+            if re.match(r"^\d{8}", line):
 
                 total_students += 1
 
-                # Extract valid subject codes
-                subject_codes = re.findall(r"\b\d{3}\b", line)
+                student_failed = False
 
-                subject_codes = [
-                    code for code in subject_codes
-                    if code in SUBJECT_MAP
-                ]
-
-                # Read marks line
+                # SUBJECT CODE LINE
                 if i + 1 < len(lines):
 
-                    marks_line = lines[i + 1]
+                    subject_line = lines[i + 1]
+
+                    subject_codes = re.findall(r"\b\d{3}\b", subject_line)
+
+                    subject_codes = [
+                        code for code in subject_codes
+                        if code in SUBJECT_MAP
+                    ]
+
+                else:
+                    subject_codes = []
+
+                # MARKS + GRADE LINE
+                if i + 2 < len(lines):
+
+                    marks_line = lines[i + 2]
 
                     grade_matches = re.findall(
                         r"(\d{2,3})\s+([A-E][1-2]?)",
                         marks_line
                     )
 
-                    failed = False
+                else:
+                    grade_matches = []
 
-                    for idx, match in enumerate(grade_matches):
+                # MAP SUBJECTS WITH GRADES
+                for idx in range(min(len(subject_codes), len(grade_matches))):
 
-                        if idx >= len(subject_codes):
-                            break
+                    subject_code = subject_codes[idx]
 
-                        marks = match[0]
-                        grade = match[1]
+                    grade = grade_matches[idx][1]
 
-                        subject_code = subject_codes[idx]
+                    if subject_code not in subject_stats:
 
-                        if subject_code not in subject_stats:
+                        subject_stats[subject_code] = {
+                            "code": subject_code,
+                            "name": SUBJECT_MAP.get(subject_code, subject_code),
+                            "A1": 0,
+                            "A2": 0,
+                            "B1": 0,
+                            "B2": 0,
+                            "C1": 0,
+                            "C2": 0,
+                            "D": 0,
+                            "E": 0,
+                            "totalPresent": 0,
+                            "passCount": 0,
+                            "pointsEarned": 0,
+                            "maxPoints": 0,
+                            "pi": 0,
+                            "passPercentage": 0
+                        }
 
-                            subject_stats[subject_code] = {
-                                "code": subject_code,
-                                "name": SUBJECT_MAP.get(
-                                    subject_code,
-                                    f"Subject {subject_code}"
-                                ),
-                                "A1": 0,
-                                "A2": 0,
-                                "B1": 0,
-                                "B2": 0,
-                                "C1": 0,
-                                "C2": 0,
-                                "D": 0,
-                                "E": 0,
-                                "totalPresent": 0,
-                                "passCount": 0,
-                                "pointsEarned": 0,
-                                "maxPoints": 0,
-                                "pi": 0,
-                                "passPercentage": 0
-                            }
+                    stat = subject_stats[subject_code]
 
-                        stat = subject_stats[subject_code]
+                    stat["totalPresent"] += 1
 
-                        stat["totalPresent"] += 1
+                    if grade == "A1":
+                        stat["A1"] += 1
 
-                        if grade == "A1":
-                            stat["A1"] += 1
+                    elif grade == "A2":
+                        stat["A2"] += 1
 
-                        elif grade == "A2":
-                            stat["A2"] += 1
+                    elif grade == "B1":
+                        stat["B1"] += 1
 
-                        elif grade == "B1":
-                            stat["B1"] += 1
+                    elif grade == "B2":
+                        stat["B2"] += 1
 
-                        elif grade == "B2":
-                            stat["B2"] += 1
+                    elif grade == "C1":
+                        stat["C1"] += 1
 
-                        elif grade == "C1":
-                            stat["C1"] += 1
+                    elif grade == "C2":
+                        stat["C2"] += 1
 
-                        elif grade == "C2":
-                            stat["C2"] += 1
+                    elif grade in ["D1", "D2"]:
+                        stat["D"] += 1
 
-                        elif grade in ["D1", "D2"]:
-                            stat["D"] += 1
+                    elif grade == "E":
+                        stat["E"] += 1
+                        student_failed = True
 
-                        elif grade == "E":
-                            stat["E"] += 1
-                            failed = True
+                    if grade != "E":
+                        stat["passCount"] += 1
 
-                        if grade != "E":
-                            stat["passCount"] += 1
+                    stat["pointsEarned"] += GRADE_POINTS.get(grade, 0)
 
-                        stat["pointsEarned"] += GRADE_POINTS.get(grade, 0)
+                if not student_failed:
+                    total_pass_students += 1
 
-                    if not failed:
-                        total_pass_students += 1
-
-                i += 2
+                i += 3
 
             else:
                 i += 1
 
-        # Calculate PI and Pass Percentage
+        # CALCULATIONS
         total_points = 0
-        total_max_points = 0
+        total_max = 0
 
         for code in subject_stats:
 
@@ -194,9 +192,6 @@ def predict():
                     2
                 )
 
-            else:
-                stat["pi"] = 0
-
             if stat["totalPresent"] > 0:
 
                 stat["passPercentage"] = round(
@@ -204,23 +199,18 @@ def predict():
                     2
                 )
 
-            else:
-                stat["passPercentage"] = 0
-
             total_points += stat["pointsEarned"]
-            total_max_points += stat["maxPoints"]
+            total_max += stat["maxPoints"]
 
-        # Overall PI
         overall_pi = 0
 
-        if total_max_points > 0:
+        if total_max > 0:
 
             overall_pi = round(
-                (total_points / total_max_points) * 100,
+                (total_points / total_max) * 100,
                 2
             )
 
-        # Overall Pass %
         overall_pass_rate = 0
 
         if total_students > 0:
