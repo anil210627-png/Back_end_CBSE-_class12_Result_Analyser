@@ -45,9 +45,17 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
+
     try:
+
         if "file" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
+            return jsonify({
+                "subjects": {},
+                "overallPI": 0,
+                "overallPassRate": 0,
+                "totalStudents": 0,
+                "error": "No file uploaded"
+            })
 
         file = request.files["file"]
 
@@ -56,6 +64,7 @@ def predict():
         lines = text.splitlines()
 
         subject_stats = {}
+
         total_students = 0
         total_pass_students = 0
 
@@ -66,22 +75,21 @@ def predict():
             line = lines[i].strip()
 
             # Detect student line
-            student_match = re.match(r"^\d{8}", line)
+            roll_match = re.match(r"^\d{8}", line)
 
-            if student_match:
+            if roll_match:
 
                 total_students += 1
 
-                # Extract subject codes
+                # Extract valid subject codes
                 subject_codes = re.findall(r"\b\d{3}\b", line)
 
-                # Remove roll-like accidental codes
                 subject_codes = [
                     code for code in subject_codes
                     if code in SUBJECT_MAP
                 ]
 
-                # Next line contains marks and grades
+                # Read marks line
                 if i + 1 < len(lines):
 
                     marks_line = lines[i + 1]
@@ -91,15 +99,15 @@ def predict():
                         marks_line
                     )
 
-                    student_failed = False
+                    failed = False
 
-                    for idx, result in enumerate(grade_matches):
+                    for idx, match in enumerate(grade_matches):
 
                         if idx >= len(subject_codes):
                             break
 
-                        marks = result[0]
-                        grade = result[1]
+                        marks = match[0]
+                        grade = match[1]
 
                         subject_code = subject_codes[idx]
 
@@ -154,14 +162,14 @@ def predict():
 
                         elif grade == "E":
                             stat["E"] += 1
-                            student_failed = True
+                            failed = True
 
                         if grade != "E":
                             stat["passCount"] += 1
 
                         stat["pointsEarned"] += GRADE_POINTS.get(grade, 0)
 
-                    if not student_failed:
+                    if not failed:
                         total_pass_students += 1
 
                 i += 2
@@ -169,7 +177,7 @@ def predict():
             else:
                 i += 1
 
-        # Calculate PI and Pass %
+        # Calculate PI and Pass Percentage
         total_points = 0
         total_max_points = 0
 
@@ -180,6 +188,7 @@ def predict():
             stat["maxPoints"] = stat["totalPresent"] * 8
 
             if stat["maxPoints"] > 0:
+
                 stat["pi"] = round(
                     (stat["pointsEarned"] / stat["maxPoints"]) * 100,
                     2
@@ -189,6 +198,7 @@ def predict():
                 stat["pi"] = 0
 
             if stat["totalPresent"] > 0:
+
                 stat["passPercentage"] = round(
                     (stat["passCount"] / stat["totalPresent"]) * 100,
                     2
@@ -200,17 +210,21 @@ def predict():
             total_points += stat["pointsEarned"]
             total_max_points += stat["maxPoints"]
 
+        # Overall PI
         overall_pi = 0
 
         if total_max_points > 0:
+
             overall_pi = round(
                 (total_points / total_max_points) * 100,
                 2
             )
 
+        # Overall Pass %
         overall_pass_rate = 0
 
         if total_students > 0:
+
             overall_pass_rate = round(
                 (total_pass_students / total_students) * 100,
                 2
@@ -220,13 +234,19 @@ def predict():
             "subjects": subject_stats,
             "overallPI": overall_pi,
             "overallPassRate": overall_pass_rate,
-            "totalStudents": total_students
+            "totalStudents": total_students,
+            "error": None
         })
 
     except Exception as e:
+
         return jsonify({
+            "subjects": {},
+            "overallPI": 0,
+            "overallPassRate": 0,
+            "totalStudents": 0,
             "error": str(e)
-        }), 500
+        })
 
 
 if __name__ == "__main__":
